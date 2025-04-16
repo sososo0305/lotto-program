@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>알잘딱깔센 로또 프로그램</title>
+  <style>
+    /* 공통 스타일 */
+    body {
+      background: #ffe6f2;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h1, h2, h3, h4 {
+      color: #d6336c;
+    }
+    input {
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    button, a.btn-link, .tab-button {
+      background-color: #ff69b4;
+      border: none;
+      color: white;
+      padding: 8px 12px;
+      margin: 5px;
+      cursor: pointer;
+      border-radius: 4px;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button:hover, a.btn-link:hover, .tab-button:hover {
+      background-color: #ff85b8;
+    }
+    .section {
+      background-color: #fff0f6;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .ticket-item, .winning-item {
+      background-color: #ffe6f2;
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 4px;
+      position: relative;
+    }
+    .ticket-header {
+      font-weight: bold;
+    }
+    .delete-button {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      background-color: #d6336c;
+      padding: 3px 6px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Firebase SDK (모듈 방식) -->
+  <script type="module">
+    // Firebase 관련 SDK 불러오기 (인증 관련 부분은 제거)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    // Firebase 설정 (Firebase 콘솔에서 받은 설정값으로 수정하세요)
+    const firebaseConfig = {
+      apiKey: "AIzaSyB421Q_VBFQPjyrKjuw0o-v3bN784KNJmE",
+      authDomain: "lucky-soso.firebaseapp.com",
+      projectId: "lucky-soso",
+      storageBucket: "lucky-soso.firebasestorage.app",
+      messagingSenderId: "654403616601",
+      appId: "1:654403616601:web:c23868f725bf9afcd09648",
+      measurementId: "G-RM82K81XQR"
+    };
+
+    // Firebase 초기화
+    const appFirebase = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(appFirebase);
+    const db = getFirestore(appFirebase);
+  </script>
+
+  <!-- 메인 로또 프로그램 영역 (로그인/회원가입 기능 제거됨) -->
+  <div id="mainContainer">
+    <h1>알잘딱깔센 로또 프로그램</h1>
+    
+    <!-- 티켓 생성 섹션 -->
+    <div class="section">
+      <h2>티켓 생성</h2>
+      <p>티켓 회차 번호: <input type="text" id="roundInput" placeholder="예: 1024회차"></p>
+      <button id="autoPickBtn">자동 번호 생성</button>
+      <div style="margin-top:10px;">
+        <p>수동 번호 입력 (예: 3 12 25 33 40 45):</p>
+        <input type="text" id="manualInput" placeholder="숫자 6개를 공백으로 입력">
+        <button id="manualPickBtn">입력</button>
+      </div>
+      <div style="margin-top:15px;">
+        <h3>내 티켓</h3>
+        <div id="ticketList"></div>
+      </div>
+    </div>
+    
+    <!-- 당첨 번호 등록 섹션 -->
+    <div class="section">
+      <h2>당첨 번호 등록</h2>
+      <p>당첨 회차 번호: <input type="text" id="winningRoundInput" placeholder="예: 1024회차"></p>
+      <p>당첨 번호 7개 입력 (앞 6개: 일반, 마지막: 보너스):</p>
+      <input type="text" id="winningInput" placeholder="예: 3 12 25 33 40 45 7">
+      <br>
+      <button id="setWinningBtn">당첨 번호 등록 (수동)</button>
+      <br><br>
+      <p>최신 당첨 번호를 확인하려면?</p>
+      <a class="btn-link" id="openLottoPageBtn" href="https://dhlottery.co.kr/common.do?method=main" target="_blank">
+        최신 당첨 번호 검색
+      </a>
+      <div id="winningDisplay" style="margin-top:10px;"></div>
+    </div>
+    
+    <!-- 번호 비교 및 결과 섹션 -->
+    <div class="section">
+      <h2>번호 비교 및 결과</h2>
+      <button id="compareBtn">티켓과 당첨 번호 비교</button>
+      <div id="resultDisplay" style="margin-top:10px;"></div>
+    </div>
+  </div>
+  
+  <!-- 메인 기능 스크립트 (로그인 관련 코드 제거) -->
+  <script>
+    // 전역 변수 (로컬 배열; Firestore 연동은 추후 추가 가능)
+    let tickets = [];           // 티켓 목록: { round, type, numbers, createdAt }
+    let winningData = {};       // 당첨 번호 데이터: { round: { numbers, bonus, drawDate } }
+
+    // 자동 번호 생성 함수: 1부터 45까지 중복 없이 6개의 번호 생성
+    function autoPick() {
+      const nums = [];
+      while (nums.length < 6) {
+        let r = Math.floor(Math.random() * 45) + 1;
+        if (!nums.includes(r)) {
+          nums.push(r);
+        }
+      }
+      return nums.sort((a, b) => a - b);
+    }
+
+    // 티켓 목록을 화면에 출력하는 함수
+    function displayTickets() {
+      const list = document.getElementById('ticketList');
+      list.innerHTML = '';
+      tickets.forEach((ticket, index) => {
+        const div = document.createElement('div');
+        div.className = 'ticket-item';
+        const roundText = ticket.round ? ticket.round : '회차 미지정';
+        div.innerHTML = `
+          <span class="ticket-header">${roundText} (${ticket.type})</span>: ${ticket.numbers.join(', ')}
+          <button class="delete-button" onclick="deleteTicket(${index})">삭제</button>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function deleteTicket(idx) {
+      tickets.splice(idx, 1);
+      displayTickets();
+    }
+    window.deleteTicket = deleteTicket;
+
+    // 티켓 생성 (자동)
+    document.getElementById('autoPickBtn').addEventListener('click', () => {
+      const round = document.getElementById('roundInput').value.trim();
+      const ticketNumbers = autoPick();
+      const ticket = { round: round, type: '자동', numbers: ticketNumbers, createdAt: new Date() };
+      tickets.push(ticket);
+      displayTickets();
+      // 추후 Firestore 저장 기능 추가 가능
+    });
+
+    // 티켓 생성 (수동)
+    document.getElementById('manualPickBtn').addEventListener('click', () => {
+      const round = document.getElementById('roundInput').value.trim();
+      const input = document.getElementById('manualInput').value.trim();
+      if (!input) {
+        alert('번호를 입력해주세요.');
+        return;
+      }
+      const numList = input.split(/\s+/).map(Number);
+      if (numList.length !== 6) {
+        alert('숫자 6개를 공백으로 구분해 입력해야 합니다.');
+        return;
+      }
+      if (new Set(numList).size !== 6) {
+        alert('중복된 숫자가 있습니다.');
+        return;
+      }
+      for (let n of numList) {
+        if (n < 1 || n > 45) {
+          alert('모든 번호는 1부터 45 사이여야 합니다.');
+          return;
+        }
+      }
+      const ticket = { round: round, type: '수동', numbers: numList.sort((a, b) => a - b), createdAt: new Date() };
+      tickets.push(ticket);
+      displayTickets();
+      document.getElementById('manualInput').value = '';
+    });
+
+    // 당첨 번호 등록 (수동, 7개 입력: 처음 6개는 일반 번호, 마지막 1개는 보너스 번호)
+    document.getElementById('setWinningBtn').addEventListener('click', () => {
+      const winningRound = document.getElementById('winningRoundInput').value.trim();
+      if (!winningRound) {
+        alert('당첨 회차 번호를 입력해주세요.');
+        return;
+      }
+      const winInput = document.getElementById('winningInput').value.trim();
+      if (!winInput) {
+        alert('당첨 번호 7개(마지막 번호는 보너스 번호)를 입력해주세요.');
+        return;
+      }
+      const winNums = winInput.split(/\s+/).map(Number);
+      if (winNums.length !== 7) {
+        alert('당첨 번호는 7개를 입력해야 합니다. (마지막 번호는 보너스 번호입니다.)');
+        return;
+      }
+      if (new Set(winNums).size !== 7) {
+        alert('중복된 번호가 있습니다.');
+        return;
+      }
+      for (let n of winNums) {
+        if (n < 1 || n > 45) {
+          alert('모든 번호는 1부터 45 사이여야 합니다.');
+          return;
+        }
+      }
+      const winningNumbers = winNums.slice(0, 6).sort((a, b) => a - b);
+      const bonusNumber = winNums[6];
+      winningData[winningRound] = { numbers: winningNumbers, bonus: bonusNumber, drawDate: '' };
+      document.getElementById('winningRoundInput').value = '';
+      document.getElementById('winningInput').value = '';
+      displayWinningData();
+    });
+
+    function displayWinningData() {
+      const winDisplay = document.getElementById('winningDisplay');
+      winDisplay.innerHTML = '<h4>등록된 당첨번호</h4>';
+      if (Object.keys(winningData).length === 0) {
+        winDisplay.innerHTML += '<p>아직 등록된 당첨번호가 없습니다.</p>';
+      } else {
+        for (let round in winningData) {
+          const w = winningData[round];
+          const bonusText = (w.bonus !== null) ? ` | 보너스: ${w.bonus}` : '';
+          winDisplay.innerHTML += `<p class="winning-item">${round}${w.drawDate ? ` ${w.drawDate}` : ''}: ${w.numbers.join(', ')}${bonusText}</p>`;
+        }
+      }
+    }
+
+    // 번호 비교 기능
+    function determinePrize(ticketNumbers, winNumbers, bonus) {
+      const matchCount = ticketNumbers.filter(n => winNumbers.includes(n)).length;
+      if (matchCount === 6) return '1등';
+      else if (matchCount === 5) {
+        if (bonus !== null && ticketNumbers.includes(bonus)) return '2등';
+        return '3등';
+      } else if (matchCount === 4) return '4등';
+      else if (matchCount === 3) return '5등';
+      else return '꽝';
+    }
+
+    document.getElementById('compareBtn').addEventListener('click', () => {
+      const resultDisplay = document.getElementById('resultDisplay');
+      resultDisplay.innerHTML = '<h3>비교 결과:</h3>';
+      if (tickets.length === 0) {
+        resultDisplay.innerHTML += '<p>등록된 티켓이 없습니다.</p>';
+        return;
+      }
+      tickets.forEach(ticket => {
+        const round = ticket.round || '회차 미지정';
+        let p = document.createElement('p');
+        if (winningData.hasOwnProperty(round)) {
+          const w = winningData[round];
+          const rank = determinePrize(ticket.numbers, w.numbers, w.bonus);
+          p.textContent = `${round} (${ticket.type}) [${ticket.numbers.join(', ')}]: ${rank}`;
+        } else {
+          p.textContent = `${round} (${ticket.type}) [${ticket.numbers.join(', ')}]: 당첨 번호가 등록되지 않았습니다.`;
+        }
+        resultDisplay.appendChild(p);
+      });
+    });
+  </script>
+</body>
+</html>
